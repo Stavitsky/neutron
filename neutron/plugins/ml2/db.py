@@ -28,6 +28,7 @@ from neutron import manager
 from neutron.openstack.common import uuidutils
 from neutron.plugins.ml2 import driver_api as api
 from neutron.plugins.ml2 import models
+from neutron.plugins.ml2.drivers.type_vlan import VlanAllocation
 
 LOG = log.getLogger(__name__)
 
@@ -41,6 +42,13 @@ def _make_segment_dict(record):
             api.NETWORK_TYPE: record.network_type,
             api.PHYSICAL_NETWORK: record.physical_network,
             api.SEGMENTATION_ID: record.segmentation_id}
+
+
+def _make_vlan_allocation_dict(record):
+    """make a VLAN allocation dictionary out of DB record."""
+    return {api.PHYSICAL_NETWORK: record.physical_network,
+            'vlan_id': record.vlan_id,
+            'allocated': record.allocated}
 
 
 def add_network_segment(session, network_id, segment, segment_index=0,
@@ -89,27 +97,27 @@ def get_segment_by_id(session, segment_id):
 
 def get_dynamic_segment(session, network_id, physical_network=None,
                         segmentation_id=None):
-        """Return a dynamic segment for the filters provided if one exists."""
-        with session.begin(subtransactions=True):
-            query = (session.query(models.NetworkSegment).
-                     filter_by(network_id=network_id, is_dynamic=True))
-            if physical_network:
-                query = query.filter_by(physical_network=physical_network)
-            if segmentation_id:
-                query = query.filter_by(segmentation_id=segmentation_id)
-            record = query.first()
+    """Return a dynamic segment for the filters provided if one exists."""
+    with session.begin(subtransactions=True):
+        query = (session.query(models.NetworkSegment).
+                 filter_by(network_id=network_id, is_dynamic=True))
+        if physical_network:
+            query = query.filter_by(physical_network=physical_network)
+        if segmentation_id:
+            query = query.filter_by(segmentation_id=segmentation_id)
+        record = query.first()
 
-        if record:
-            return _make_segment_dict(record)
-        else:
-            LOG.debug("No dynamic segment found for "
-                      "Network:%(network_id)s, "
-                      "Physical network:%(physnet)s, "
-                      "segmentation_id:%(segmentation_id)s",
-                      {'network_id': network_id,
-                       'physnet': physical_network,
-                       'segmentation_id': segmentation_id})
-            return None
+    if record:
+        return _make_segment_dict(record)
+    else:
+        LOG.debug("No dynamic segment found for "
+                  "Network:%(network_id)s, "
+                  "Physical network:%(physnet)s, "
+                  "segmentation_id:%(segmentation_id)s",
+                  {'network_id': network_id,
+                   'physnet': physical_network,
+                   'segmentation_id': segmentation_id})
+        return None
 
 
 def delete_network_segment(session, segment_id):
@@ -362,3 +370,11 @@ def get_dvr_port_bindings(session, port_id):
     if not bindings:
         LOG.debug("No bindings for DVR port %s", port_id)
     return bindings
+
+
+def get_vlan_allocations(session):
+    with session.begin(subtransactions=True):
+        vlan_allocations = session.query(VlanAllocation).all()
+    if not vlan_allocations:
+        LOG.debug("No VLAN")
+    return [_make_vlan_allocation_dict(v_a) for v_a in vlan_allocations]

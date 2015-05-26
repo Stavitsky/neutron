@@ -118,7 +118,8 @@ class Ml2Plugin(db_base_plugin_v2.NeutronDbPluginV2,
                                     "dhcp_agent_scheduler",
                                     "multi-provider", "allowed-address-pairs",
                                     "extra_dhcp_opt", "subnet_allocation",
-                                    "net-mtu", "vlan-transparent"]
+                                    "net-mtu", "vlan-transparent",
+                                    "vlan-allocation"]
 
     @property
     def supported_extension_aliases(self):
@@ -674,6 +675,13 @@ class Ml2Plugin(db_base_plugin_v2.NeutronDbPluginV2,
             nets = self._filter_nets_l3(context, nets, filters)
 
         return [self._fields(net, fields) for net in nets]
+
+    def get_vlan_allocations(self, context, filters=None, fields=None,
+                             sorts=None, limit=None, marker=None,
+                             page_reverse=False):
+        session = context.session
+        vlan_allocations = db.get_vlan_allocations(session)
+        return vlan_allocations
 
     def _delete_ports(self, context, ports):
         for port in ports:
