@@ -10,7 +10,7 @@ RESOURCE_ATTRIBUTE_MAP = {
         'physical_network': {'allow_post': False, 'allow_put': False,
                              'is_visible': True},
         'vlan_id': {'allow_post': False, 'allow_put': False,
-                    'is_visible': True},
+                    'is_visible': True, 'primary_key': True},
         'allocated': {'allow_post': False, 'allow_put': False,
                       'is_visible': True}
     }
@@ -46,7 +46,8 @@ class Vlanallocation(extensions.ExtensionDescriptor):
         params = RESOURCE_ATTRIBUTE_MAP.get(RESOURCE_NAME + 's')
         controller = base.create_resource(RESOURCE_NAME + 's',
                                           RESOURCE_NAME,
-                                          plugin, params
+                                          plugin, params,
+                                          allow_pagination=True
                                           )
         ex = extensions.ResourceExtension(RESOURCE_NAME + 's',
                                           controller)

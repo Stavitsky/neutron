@@ -96,6 +96,10 @@ class PolicyFileNotFound(NotFound):
     message = _("Policy configuration policy.json could not be found")
 
 
+class VlanNotFound():
+    message = _("Vlan %(vlan_id)s could not be found")
+
+
 class PolicyInitError(NeutronException):
     message = _("Failed to init policy %(policy)s because %(reason)s")
 

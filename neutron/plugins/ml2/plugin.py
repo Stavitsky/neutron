@@ -76,6 +76,7 @@ from neutron.plugins.ml2 import driver_context
 from neutron.plugins.ml2 import managers
 from neutron.plugins.ml2 import models
 from neutron.plugins.ml2 import rpc
+from neutron.plugins.ml2.drivers.type_vlan import VlanAllocation
 
 LOG = log.getLogger(__name__)
 
@@ -459,6 +460,13 @@ class Ml2Plugin(db_base_plugin_v2.NeutronDbPluginV2,
         if port_db.port_binding:
             self._update_port_dict_binding(port_res, port_db.port_binding)
 
+    def _make_vlan_allocation_dict(self, vlan_allocation, fields=None,
+                                   process_extensions=True):
+        res = {'vlan_id': vlan_allocation['vlan_id'],
+               'physical_network': vlan_allocation['physical_network'],
+               'allocated': vlan_allocation['allocated']}
+        return res
+
     db_base_plugin_v2.NeutronDbPluginV2.register_dict_extend_funcs(
         attributes.PORTS, ['_ml2_extend_port_dict_binding'])
 
@@ -675,12 +683,35 @@ class Ml2Plugin(db_base_plugin_v2.NeutronDbPluginV2,
             nets = self._filter_nets_l3(context, nets, filters)
 
         return [self._fields(net, fields) for net in nets]
+    
+    def _get_vlan_allocation_by_id(self, context, model, id):
+        query = self._model_query(context, model)
+        return query.filter(model.vlan_id == id).one()
+
+    def _get_vlan_allocation(self, context, vlan_id):
+        try:
+            vlan_allocation = self._get_vlan_allocation_by_id(context,
+                                                              VlanAllocation,
+                                                              vlan_id)
+        except sa_exc.NoResultFound:
+            raise exc.VlanNotFound(vlan_id=vlan_id)
+        return vlan_allocation
 
     def get_vlan_allocations(self, context, filters=None, fields=None,
                              sorts=None, limit=None, marker=None,
                              page_reverse=False):
         session = context.session
-        vlan_allocations = db.get_vlan_allocations(session)
+        marker_obj = self._get_marker_obj(context,
+                                          'vlan_allocation',
+                                          limit,
+                                          marker)
+        vlan_allocations = self._get_collection(context, VlanAllocation,
+                                                self._make_vlan_allocation_dict,
+                                                filters=filters, fields=fields,
+                                                sorts=sorts,
+                                                limit=limit,
+                                                marker_obj=marker_obj,
+                                                page_reverse=page_reverse)
         return vlan_allocations
 
     def _delete_ports(self, context, ports):

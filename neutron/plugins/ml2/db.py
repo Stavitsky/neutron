@@ -372,9 +372,10 @@ def get_dvr_port_bindings(session, port_id):
     return bindings
 
 
-def get_vlan_allocations(session):
+def get_vlan_allocations(session, limit=None):
     with session.begin(subtransactions=True):
-        vlan_allocations = session.query(VlanAllocation).all()
+        vlan_allocations = session.query(VlanAllocation).order_by(
+          VlanAllocation.vlan_id)
     if not vlan_allocations:
         LOG.debug("No VLAN")
     return [_make_vlan_allocation_dict(v_a) for v_a in vlan_allocations]
