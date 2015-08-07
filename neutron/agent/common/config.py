@@ -61,6 +61,8 @@ USE_NAMESPACES_OPTS = [
 IPTABLES_OPTS = [
     cfg.BoolOpt('comment_iptables_rules', default=True,
                 help=_("Add comments to iptables rules.")),
+    cfg.BoolOpt('rule_violation_monitoring', default=False,
+                help=_("Add logging iptables rule before each DROP rule.")),
 ]
 
 IPSET_OPTS = [

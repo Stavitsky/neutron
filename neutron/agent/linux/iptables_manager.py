@@ -183,6 +183,31 @@ class IptablesTable(object):
         self.rules = [r for r in self.rules
                       if jump_snippet not in r.rule]
 
+    def _make_prefix(self, chain, rule, pos):
+        prefix = ["chain:%s:%d" % (chain, pos)]
+        _rule = rule.split(' ')
+        while _rule:
+            part = _rule.pop(0)
+            if part.startswith('-'):
+                part = part.lstrip('-')
+                if prefix:
+                    prefix.append(';%s' % part)
+                else:
+                    prefix.append('%s' % part)
+            elif part == '!':
+                prefix.append(';not')
+            else:
+                if (part == 'DROP' and prefix[-1] == ';j' or
+                        part == 'comment' and prefix[-1] == ';m'):
+                    prefix.pop(-1)
+                    break
+                else:
+                    prefix.append('=%s' % part)
+        if len(prefix) == 1:
+            prefix.append(';any')
+        result = "".join(prefix)
+        return result[:64]
+
     def add_rule(self, chain, rule, wrap=True, top=False, tag=None,
                  comment=None):
         """Add a rule to the table.
@@ -203,6 +228,15 @@ class IptablesTable(object):
             rule = ' '.join(
                 self._wrap_target_chain(e, wrap) for e in rule.split(' '))
 
+        # Note (alexstav): insert new rule before each DROP.
+        if cfg.CONF.AGENT.rule_violation_monitoring and '-j DROP' in rule:
+            chain_len = len(self._get_chain_rules(chain, wrap))
+            rule_prefix = self._make_prefix(chain, rule, chain_len + 2)
+            self.rules.append(
+                IptablesRule(chain,
+                             "-p tcp --dport 22 -j NFLOG --nflog-prefix \"%s\""
+                             % rule_prefix, wrap, top, tag))
+
         self.rules.append(IptablesRule(chain, rule, wrap, top, self.wrap_name,
                                        tag, comment))
 
@@ -211,6 +245,15 @@ class IptablesTable(object):
             s = ('%s-%s' % (self.wrap_name, get_chain_name(s[1:], wrap)))
 
         return s
+
+    def _update_rules_prefix(self, chain, wrap):
+        chain_rules = self._get_chain_rules(chain, wrap)
+        for r in chain_rules:
+            if '--nflog-prefix' in r.rule:
+                _rule = re.sub('(chain:[\w-]+:)\d+',
+                               '\g<1>%d' % int(chain_rules.index(r)+2),
+                               r.rule)
+                r.rule = _rule
 
     def remove_rule(self, chain, rule, wrap=True, top=False, comment=None):
         """Remove a rule from a chain.
@@ -226,6 +269,16 @@ class IptablesTable(object):
                 rule = ' '.join(
                     self._wrap_target_chain(e, wrap) for e in rule.split(' '))
 
+            if cfg.CONF.AGENT.rule_violation_monitoring and '-j DROP' in rule:
+                chain_rules = [
+                    r.rule for r in self._get_chain_rules(chain, wrap)]
+                rule_prefix = self._make_prefix(chain, rule,
+                                                chain_rules.index(rule) + 1)
+                self.rules.remove(
+                    IptablesRule(chain,
+                                 '-p tcp --dport 22 -j NFLOG --nflog-prefix'
+                                 ' "%s"' % rule_prefix))
+
             self.rules.remove(IptablesRule(chain, rule, wrap, top,
                                            self.wrap_name,
                                            comment=comment))
@@ -233,6 +286,7 @@ class IptablesTable(object):
                 self.remove_rules.append(IptablesRule(chain, rule, wrap, top,
                                                       self.wrap_name,
                                                       comment=comment))
+            self._update_rules_prefix(chain, wrap)
         except ValueError:
             LOG.warn(_LW('Tried to remove rule that was not there:'
                          ' %(chain)r %(rule)r %(wrap)r %(top)r'),
@@ -324,11 +378,11 @@ class IptablesManager(object):
             self.ipv4.update(
                 {'nat': IptablesTable(binary_name=self.wrap_name)})
             builtin_chains[4].update({'nat': ['PREROUTING',
-                                      'OUTPUT', 'POSTROUTING']})
+                                              'OUTPUT', 'POSTROUTING']})
             self.ipv4.update(
                 {'raw': IptablesTable(binary_name=self.wrap_name)})
             builtin_chains[4].update({'raw': ['PREROUTING',
-                                      'OUTPUT']})
+                                              'OUTPUT']})
 
         for ip_version in builtin_chains:
             if ip_version == 4:
@@ -464,9 +518,9 @@ class IptablesManager(object):
                         log_end = len(all_lines)
                     log_lines = ('%7d. %s' % (idx, l)
                                  for idx, l in enumerate(
-                                     all_lines[log_start:log_end],
-                                     log_start + 1)
-                                 )
+                        all_lines[log_start:log_end],
+                        log_start + 1)
+                    )
                     LOG.error(_LE("IPTablesManager.apply failed to apply the "
                                   "following set of iptables rules:\n%s"),
                               '\n'.join(log_lines))
