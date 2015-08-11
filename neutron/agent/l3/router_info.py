@@ -13,6 +13,7 @@
 #    under the License.
 
 import netaddr
+import re
 
 from oslo_log import log as logging
 
@@ -143,7 +144,7 @@ class RouterInfo(object):
             for del_route in removes:
                 if route['destination'] == del_route['destination']:
                     removes.remove(del_route)
-            #replace success even if there is no existing route
+            # replace success even if there is no existing route
             self._update_routing_table('replace', route)
         for route in removes:
             LOG.debug("Removed route entry is '%s'", route)
@@ -261,7 +262,7 @@ class RouterInfo(object):
         except Exception:
             # TODO(salv-orlando): Less broad catching
             raise n_exc.FloatingIpSetupException('L3 agent failure to setup '
-                'floating IPs')
+                                                 'floating IPs')
 
     def put_fips_in_error_state(self):
         fip_statuses = {}
@@ -375,7 +376,7 @@ class RouterInfo(object):
                 interface_name = self.get_internal_device_name(p['id'])
                 ip_cidrs = common_utils.fixed_ip_cidrs(p['fixed_ips'])
                 self.driver.init_l3(interface_name, ip_cidrs=ip_cidrs,
-                        namespace=self.ns_name)
+                                    namespace=self.ns_name)
                 enable_ra = enable_ra or self._port_has_ipv6_subnet(p)
 
         # Enable RA
@@ -513,8 +514,8 @@ class RouterInfo(object):
         self.perform_snat_action(self._handle_router_snat_rules,
                                  interface_name)
 
-    def external_gateway_nat_rules(self, ex_gw_ip, interface_name):
-        mark = self.agent_conf.external_ingress_mark
+    def external_gateway_nat_rules(self, ex_gw_ip, interface_name, port_id):
+        mark = re.sub('[^0-9]', '', port_id)[:9]
         rules = [('POSTROUTING', '! -i %(interface_name)s '
                   '! -o %(interface_name)s -m conntrack ! '
                   '--ctstate DNAT -j ACCEPT' %
@@ -526,10 +527,10 @@ class RouterInfo(object):
                   '-j SNAT --to-source %s' % (mark, ex_gw_ip))]
         return rules
 
-    def external_gateway_mangle_rules(self, interface_name):
-        mark = self.agent_conf.external_ingress_mark
-        rules = [('mark', '-i %s -j MARK --set-xmark %s/%s' %
-                 (interface_name, mark, EXTERNAL_INGRESS_MARK_MASK))]
+    def external_gateway_mangle_rules(self, interface_name, port_id):
+        mark = re.sub('[^0-9]', '', port_id)[:9]
+        rules = [('mark', '-i %s -j MARK --set-mark %s' %
+                  (interface_name, mark))]
         return rules
 
     def _empty_snat_chains(self, iptables_manager):
@@ -544,12 +545,15 @@ class RouterInfo(object):
             # NAT rules are added only if ex_gw_port has an IPv4 address
             for ip_addr in ex_gw_port['fixed_ips']:
                 ex_gw_ip = ip_addr['ip_address']
+                ex_gw_port_id = ex_gw_port['id']
                 if netaddr.IPAddress(ex_gw_ip).version == 4:
                     rules = self.external_gateway_nat_rules(ex_gw_ip,
-                                                            interface_name)
+                                                            interface_name,
+                                                            ex_gw_port_id)
                     for rule in rules:
                         iptables_manager.ipv4['nat'].add_rule(*rule)
-                    rules = self.external_gateway_mangle_rules(interface_name)
+                    rules = self.external_gateway_mangle_rules(interface_name,
+                                                               ex_gw_port_id)
                     for rule in rules:
                         iptables_manager.ipv4['mangle'].add_rule(*rule)
                     break
