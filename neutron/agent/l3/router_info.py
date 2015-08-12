@@ -515,7 +515,7 @@ class RouterInfo(object):
                                  interface_name)
 
     def external_gateway_nat_rules(self, ex_gw_ip, interface_name, port_id):
-        mark = re.sub('[^0-9]', '', port_id)[:9]
+        mark = '0x%s' % port['id'][:8]
         rules = [('POSTROUTING', '! -i %(interface_name)s '
                   '! -o %(interface_name)s -m conntrack ! '
                   '--ctstate DNAT -j ACCEPT' %
@@ -528,7 +528,7 @@ class RouterInfo(object):
         return rules
 
     def external_gateway_mangle_rules(self, interface_name, port_id):
-        mark = re.sub('[^0-9]', '', port_id)[:9]
+        mark = '0x%s' % port['id'][:8]
         rules = [('mark', '-i %s -j MARK --set-mark %s' %
                   (interface_name, mark))]
         return rules
