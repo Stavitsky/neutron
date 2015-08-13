@@ -63,6 +63,8 @@ IPTABLES_OPTS = [
                 help=_("Add comments to iptables rules.")),
     cfg.BoolOpt('rule_violation_monitoring', default=False,
                 help=_("Add logging iptables rule before each DROP rule.")),
+    cfg.BoolOpt('connmark_vm_packets', default=False,
+                help=_("Enable packet connmarking on each VM port.")),
 ]
 
 IPSET_OPTS = [
