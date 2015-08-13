@@ -149,6 +149,46 @@ class IptablesFirewallDriver(firewall.FirewallDriver):
             self._setup_chains_apply(self.filtered_ports,
                                      self.unfiltered_ports)
 
+    def _connmark_packets(self, port, add=True):
+            mark = '0x%s' % port['id'][:8]
+            device = self._get_device_name(port)
+            if add:
+                self.iptables.ipv4['nat'].add_rule(
+                    'PREROUTING', ('-m physdev --%s %s --physdev-is-bridged'
+                                   ' -j CONNMARK --set-mark %s') %
+                    (self.IPTABLES_DIRECTION[INGRESS_DIRECTION],
+                     device,
+                     mark))
+                self.iptables.ipv4['nat'].add_rule(
+                    'POSTROUTING', ('-m physdev --%s %s --physdev-is-bridged'
+                                    ' -j CONNMARK --set-mark %s') %
+                    (self.IPTABLES_DIRECTION[EGRESS_DIRECTION],
+                     device,
+                     mark))
+                self.iptables.ipv4['mangle'].add_rule(
+                    'PREROUTING', ('-m physdev --%s %s --physdev-is-bridged'
+                                   ' -j CONNMARK --restore-mark') %
+                    (self.IPTABLES_DIRECTION[EGRESS_DIRECTION],
+                     device))
+            else:
+                self.iptables.ipv4['nat'].remove_rule(
+                    'PREROUTING', ('-m physdev --%s %s --physdev-is-bridged'
+                                   ' -j CONNMARK --set-mark %s') %
+                    (self.IPTABLES_DIRECTION[INGRESS_DIRECTION],
+                     device,
+                     mark))
+                self.iptables.ipv4['nat'].remove_rule(
+                    'POSTROUTING', ('-m physdev --%s %s --physdev-is-bridged'
+                                    ' -j CONNMARK --set-mark %s') %
+                    (self.IPTABLES_DIRECTION[EGRESS_DIRECTION],
+                     device,
+                     mark))
+                self.iptables.ipv4['mangle'].remove_rule(
+                    'PREROUTING', ('-m physdev --%s %s --physdev-is-bridged'
+                                   ' -j CONNMARK --restore-mark') %
+                    (self.IPTABLES_DIRECTION[EGRESS_DIRECTION],
+                     device))
+
     def _setup_chains_apply(self, ports, unfiltered_ports):
         self._add_chain_by_name_v4v6(SG_CHAIN)
         for port in ports.values():
@@ -156,10 +196,15 @@ class IptablesFirewallDriver(firewall.FirewallDriver):
             self._setup_chain(port, EGRESS_DIRECTION)
             self.iptables.ipv4['filter'].add_rule(SG_CHAIN, '-j ACCEPT')
             self.iptables.ipv6['filter'].add_rule(SG_CHAIN, '-j ACCEPT')
+            # Note (alexstav) connmark packets on port
+            if cfg.CONF.AGENT.connmark_vm_packets:
+                self._connmark_packets(port)
 
         for port in unfiltered_ports.values():
             self._add_accept_rule_port_sec(port, INGRESS_DIRECTION)
             self._add_accept_rule_port_sec(port, EGRESS_DIRECTION)
+            if cfg.CONF.AGENT.connmark_vm_packets:
+                self._connmark_packets(port)
 
     def _remove_chains(self):
         """Remove ingress and egress chain for a port."""
@@ -172,9 +217,13 @@ class IptablesFirewallDriver(firewall.FirewallDriver):
             self._remove_chain(port, INGRESS_DIRECTION)
             self._remove_chain(port, EGRESS_DIRECTION)
             self._remove_chain(port, SPOOF_FILTER)
+            if cfg.CONF.AGENT.connmark_vm_packets:
+                self._connmark_packets(port, add=False)
         for port in unfiltered_ports.values():
             self._remove_rule_port_sec(port, INGRESS_DIRECTION)
             self._remove_rule_port_sec(port, EGRESS_DIRECTION)
+            if cfg.CONF.AGENT.connmark_vm_packets:
+                self._connmark_packets(port, add=False)
         self._remove_chain_by_name_v4v6(SG_CHAIN)
 
     def _setup_chain(self, port, DIRECTION):

@@ -513,8 +513,8 @@ class RouterInfo(object):
         self.perform_snat_action(self._handle_router_snat_rules,
                                  interface_name)
 
-    def external_gateway_nat_rules(self, ex_gw_ip, interface_name):
-        mark = self.agent_conf.external_ingress_mark
+    def external_gateway_nat_rules(self, ex_gw_ip, interface_name, port_id):
+        mark = '0x%s' % port_id[:8]
         rules = [('POSTROUTING', '! -i %(interface_name)s '
                   '! -o %(interface_name)s -m conntrack ! '
                   '--ctstate DNAT -j ACCEPT' %
@@ -526,8 +526,8 @@ class RouterInfo(object):
                   '-j SNAT --to-source %s' % (mark, ex_gw_ip))]
         return rules
 
-    def external_gateway_mangle_rules(self, interface_name):
-        mark = self.agent_conf.external_ingress_mark
+    def external_gateway_mangle_rules(self, interface_name, port_id):
+        mark = '0x%s' % port_id[:8]
         rules = [('mark', '-i %s -j MARK --set-xmark %s/%s' %
                  (interface_name, mark, EXTERNAL_INGRESS_MARK_MASK))]
         return rules
@@ -544,12 +544,15 @@ class RouterInfo(object):
             # NAT rules are added only if ex_gw_port has an IPv4 address
             for ip_addr in ex_gw_port['fixed_ips']:
                 ex_gw_ip = ip_addr['ip_address']
+                ex_gw_port_id = ex_gw_port['id']
                 if netaddr.IPAddress(ex_gw_ip).version == 4:
                     rules = self.external_gateway_nat_rules(ex_gw_ip,
-                                                            interface_name)
+                                                            interface_name,
+                                                            ex_gw_port_id)
                     for rule in rules:
                         iptables_manager.ipv4['nat'].add_rule(*rule)
-                    rules = self.external_gateway_mangle_rules(interface_name)
+                    rules = self.external_gateway_mangle_rules(interface_name,
+                                                               ex_gw_port_id)
                     for rule in rules:
                         iptables_manager.ipv4['mangle'].add_rule(*rule)
                     break

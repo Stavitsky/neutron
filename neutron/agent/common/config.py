@@ -61,6 +61,8 @@ USE_NAMESPACES_OPTS = [
 IPTABLES_OPTS = [
     cfg.BoolOpt('comment_iptables_rules', default=True,
                 help=_("Add comments to iptables rules.")),
+    cfg.BoolOpt('connmark_vm_packets', default=False,
+                help=_("Enable packet connmarking on each VM port.")),
 ]
 
 IPSET_OPTS = [
