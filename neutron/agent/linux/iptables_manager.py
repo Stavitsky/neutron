@@ -235,7 +235,7 @@ class IptablesTable(object):
             self.rules.append(
                 IptablesRule(chain,
                              "-p tcp --dport 22 -j NFLOG --nflog-prefix \"%s\""
-                             % rule_prefix, wrap, top, tag))
+                             % rule_prefix, wrap, top, self.wrap_name, tag))
 
         self.rules.append(IptablesRule(chain, rule, wrap, top, self.wrap_name,
                                        tag, comment))
